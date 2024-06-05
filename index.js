@@ -37,8 +37,14 @@ app.get("/api/v1/books", async (req, res) => {
 
   try {
     console.log(`Fetching data for key: ${key}`);
-    
-    const cache = await redis.get(key);
+
+    const cache = await new Promise((resolve, reject) => {
+      client.get(key, (err, data) => {
+        if (err) reject(err);
+        else resolve(data);
+      });
+    });
+
     if (cache) {
       console.log("Cache hit");
       response = JSON.parse(cache);
@@ -61,7 +67,12 @@ app.get("/api/v1/books", async (req, res) => {
         currentPage: page,
       };
 
-      await redis.setex(key, 600, JSON.stringify(response));
+      await new Promise((resolve, reject) => {
+        client.setex(key, 600, JSON.stringify(response), (err) => {
+          if (err) reject(err);
+          else resolve();
+        });
+      });
     }
 
     return res.status(200).json(response);
@@ -72,6 +83,7 @@ app.get("/api/v1/books", async (req, res) => {
     });
   }
 });
+
 
 app.get("/api/v1/books/:id", async (req, res) => {
   try {
