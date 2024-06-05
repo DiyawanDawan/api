@@ -20,46 +20,53 @@ const deleteKeys = async (pattern) => {
     redis.del(keys)
   }
 }
-
 app.get("/api/v1/books", async (req, res) => {
   const { limit = 5, orderBy = "name", sortBy = "asc", keyword } = req.query;
   let page = +req.query?.page;
 
   if (!page || page <= 0) page = 1;
 
-  const skip = (page - 1) * + limit;
+  const skip = (page - 1) * +limit;
 
   const query = {};
 
   if (keyword) query.name = { $regex: keyword, $options: "i" };
 
-  const key = `Book::${JSON.stringify({query, page, limit, orderBy, sortBy})}`
-  let response = null
+  const key = `Book::${JSON.stringify({ query, page, limit, orderBy, sortBy })}`;
+  let response = null;
+
   try {
-    const cache = await redis.get(key)
+    console.log(`Fetching data for key: ${key}`);
+    
+    const cache = await redis.get(key);
     if (cache) {
-      response = JSON.parse(cache)
+      console.log("Cache hit");
+      response = JSON.parse(cache);
     } else {
+      console.log("Cache miss, querying database");
+
       const data = await BookModel.find(query)
-      .skip(skip)
-      .limit(limit)
-      .sort({ [orderBy]: sortBy });
+        .skip(skip)
+        .limit(+limit)
+        .sort({ [orderBy]: sortBy });
+      
       const totalItems = await BookModel.countDocuments(query);
 
       response = {
         msg: "Ok",
         data,
         totalItems,
-        totalPages: Math.ceil(totalItems / limit),
+        totalPages: Math.ceil(totalItems / +limit),
         limit: +limit,
         currentPage: page,
-      }
+      };
 
-      redis.setex(key, 600, JSON.stringify(response))
+      await redis.setex(key, 600, JSON.stringify(response));
     }
-    
+
     return res.status(200).json(response);
   } catch (error) {
+    console.error("Error occurred:", error);
     return res.status(500).json({
       msg: error.message,
     });
